@@ -1,0 +1,11 @@
+{
+    "title": "Ноутбук Windows XP — интерактивный проп",
+    "type": "gamemode",
+    "tags": ["fun", "roleplay"],
+    "ignore": [
+        "*.psd",
+        "*.blend",
+        "*.vcproj",
+        "*.svn/*"
+    ]
+}

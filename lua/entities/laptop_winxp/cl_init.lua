@@ -13,6 +13,19 @@ local function CreateXPDesktop(ent)
     desktop:MakePopup()
     ent.XP_Desktop = desktop
 
+    -- Отлавливаем нажатие ESC или других клавиш, чтобы выйти без зависания игры
+    desktop.OnKeyCodePressed = function(self, key)
+        -- KEY_ESCAPE = 70 в Garry's Mod
+        if key == KEY_ESCAPE then
+            -- Отправляем серверу сигнал, что мы выходим из ноута
+            net.Start("Laptop_ToggleUse")
+                net.WriteEntity(ent)
+                net.WriteBool(false)
+            net.SendToServer()
+            ent:CloseLaptop()
+        end
+    end
+
     -- Обои (DHTML) — теперь они лежат в самом низу и не перекрывают окна
     local bg = vgui.Create("DHTML", desktop)
     bg:SetSize(desktop:GetWide(), desktop:GetTall() - 30)
@@ -70,10 +83,15 @@ local function CreateXPDesktop(ent)
     clock:SetSize(80, 30)
     clock:SetFont("XP_Clock")
     clock:SetTextColor(Color(255, 255, 255))
-    clock:SetAlignment(5)
+    -- ИСПРАВЛЕНО: Выравнивание текста по центру без SetAlignment
+    clock:SetText(os.date("%H:%M"))
     clock.Think = function(self)
         self:SetText(os.date("%H:%M"))
     end
+    clock.Paint = function(self, w, h)
+        draw.SimpleText(self:GetText(), "XP_Clock", w/2, h/2, Color(255, 255, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    clock:SetText("") -- Текст рисуем вручную через Paint для идеального выравнивания
 
     -- Контейнер для запущенных программ на панели задач
     ent.XP_TaskbarApps = vgui.Create("DPanel", taskbar)
@@ -85,7 +103,7 @@ local function CreateXPDesktop(ent)
     ent:CreateDesktopIcon("Мой компьютер", "https://imgur.com", 20, 20, function()
         ent:CreateXPWindow("Мой компьютер", 500, 400, function(body)
             local lbl = vgui.Create("DLabel", body)
-            lbl:SetText("Система: Garry's Mod OS\nПроцессор: Lua Engine\nПамять: Хватает")
+            lbl:SetText("Система: Garry's Mod OS\nПроцессор: Lua Engine\nПамять: Хватает\n\nНажмите ESC для выхода из ноутбука.")
             lbl:Dock(FILL)
             lbl:SetDark(true)
         end)
@@ -111,22 +129,16 @@ function ENT:CreateXPWindow(title, w, h, populateFunc)
     frame:SetDeleteOnClose(true)
     frame:MakePopup()
 
-    -- Кастомный дизайн под Windows XP Luna
     frame.Paint = function(self, w, h)
-        -- Тело окна
         surface.SetDrawColor(240, 240, 230)
         surface.DrawRect(0, 0, w, h)
-        -- Синяя шапка
         surface.SetDrawColor(36, 95, 212)
         surface.DrawRect(0, 0, w, 25)
-        -- Текст заголовка
         draw.SimpleText(title, "XP_Taskbar", 10, 5, Color(255, 255, 255), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        -- Рамка окна
         surface.SetDrawColor(36, 95, 212)
         surface.DrawOutlinedRect(0, 0, w, h, 2)
     end
 
-    -- Кнопка закрытия
     local closeBtn = vgui.Create("DButton", frame)
     closeBtn:SetSize(21, 21)
     closeBtn:SetPos(w - 23, 2)
@@ -142,7 +154,6 @@ function ENT:CreateXPWindow(title, w, h, populateFunc)
         self:RefreshTaskbar()
     end
 
-    -- Тело содержимого (чтобы контент не налезал на шапку)
     local body = vgui.Create("DPanel", frame)
     body:SetPos(4, 27)
     body:SetSize(w - 8, h - 31)
@@ -169,11 +180,9 @@ function ENT:CreateDesktopIcon(name, iconUrl, x, y, onClickFunc)
             surface.SetDrawColor(50, 150, 255, 100)
             surface.DrawOutlinedRect(0, 0, w, h, 1)
         end
-        -- Рисуем название
         draw.DrawText(name, "XP_Taskbar", w/2, 60, Color(255, 255, 255), TEXT_ALIGN_CENTER)
     end
 
-    -- Картинка иконки
     local img = vgui.Create("DHTML", icon)
     img:SetSize(48, 48)
     img:SetPos(16, 5)
@@ -186,7 +195,6 @@ function ENT:CreateDesktopIcon(name, iconUrl, x, y, onClickFunc)
     icon.DoClick = onClickFunc
 end
 
--- Обновление панели задач при открытии/закрытии окон
 function ENT:RefreshTaskbar()
     if not IsValid(self.XP_TaskbarApps) then return end
     self.XP_TaskbarApps:Clear()
@@ -207,7 +215,7 @@ function ENT:RefreshTaskbar()
                 surface.DrawOutlinedRect(0, 0, w, h, 1)
             end
             appBtn.DoClick = function()
-                v:MakePopup() -- Вывести на передний план при клике в панели задач
+                v:MakePopup()
             end
             count = count + 1
         end
@@ -225,15 +233,14 @@ function ENT:ToggleStartMenu()
     sm:SetSize(250, 350)
     sm:SetPos(0, self.XP_Desktop:GetTall() - 380)
     sm.Paint = function(self, w, h)
-        surface.SetDrawColor(40, 100, 220) -- Синяя шапка меню
+        surface.SetDrawColor(40, 100, 220)
         surface.DrawRect(0, 0, w, 40)
-        surface.SetDrawColor(240, 240, 230) -- Левая панель программ
+        surface.SetDrawColor(240, 240, 230)
         surface.DrawRect(0, 40, w, h - 40)
     end
     self.XP_StartMenu = sm
 end
 
--- Включение системы
 function ENT:Initialize()
     self.ZoomProgress = 0
     self.IsUsing = false
@@ -265,18 +272,19 @@ net.Receive("Laptop_ToggleUse", function()
     end
 end)
 
--- Рендеринг 3D экрана на самом ноутбуке
+-- ИСПРАВЛЕНО: Рендеринг 3D экрана теперь подогнан под модель лабораторного монитора HL2
 function ENT:Draw()
     self:DrawModel()
     
-    local Pos = self:GetPos() + self:GetUp() * 12 + self:GetForward() * -4
+    -- Корректируем позицию и угол матрицы 3D2D, чтобы она не улетала сквозь модель
+    local Pos = self:GetPos() + self:GetUp() * 15.6 + self:GetForward() * 7.4 + self:GetRight() * -9.1
     local Ang = self:GetAngles()
     Ang:RotateAroundAxis(Ang:Up(), 90)
-    Ang:RotateAroundAxis(Ang:Forward(), 60)
+    Ang:RotateAroundAxis(Ang:Forward(), 74.5)
 
-    cam.Start3D2D(Pos, Ang, 0.08)
-        surface.SetDrawColor(0, 0, 250)
-        surface.DrawRect(-100, -70, 200, 140)
+    cam.Start3D2D(Pos, Ang, 0.036)
+        surface.SetDrawColor(0, 78, 152) -- Классический экран загрузки XP
+        surface.DrawRect(0, 0, 505, 395)
     cam.End3D2D()
 end
 
@@ -287,21 +295,3 @@ end
 -- Плавная камера
 hook.Add("CalcView", "Laptop_CameraZoom", function(ply, pos, angles, fov)
     local lapt = ply:GetNWEntity("UsingLaptop")
-    if IsValid(lapt) and lapt.IsUsing then
-        lapt.ZoomProgress = Lerp(FrameTime() * 5, lapt.ZoomProgress, 1)
-        
-        local screenPos = lapt:GetPos() + lapt:GetUp() * 15 + lapt:GetForward() * -2
-        local targetAng = lapt:GetAngles()
-        targetAng:RotateAroundAxis(targetAng:Up(), 180)
-
-        local newPos = LerpVector(lapt.ZoomProgress, pos, screenPos)
-        local newAng = LerpAngle(lapt.ZoomProgress, angles, targetAng)
-
-        return {
-            origin = newPos,
-            angles = newAng,
-            fov = fov,
-            drawviewer = false
-        }
-    end
-end)
